@@ -88,6 +88,7 @@ button.card{width:100%;text-align:left;display:flex;gap:12px;align-items:center}
 .h b{display:block;font-size:14.5px;margin-top:2px}
 .h p{font-size:13.5px;color:var(--ink2);margin-top:3px;word-break:break-word}
 .mini{font-size:13px;color:var(--ink2)}
+.lnk{margin-top:12px;background:none;border:1px solid var(--line);border-radius:12px;padding:11px 14px;font:inherit;font-size:14px;font-weight:600;color:var(--blue);width:100%;text-align:center}
 
 /* Ana düğme */
 .pri{width:100%;border:0;border-radius:14px;min-height:54px;padding:12px;font-size:17px;font-weight:700;color:#fff;background:linear-gradient(90deg,#0f5fe0,#2a7bff);box-shadow:0 8px 18px rgba(21,101,232,.28);display:flex;align-items:center;justify-content:center;gap:10px}
@@ -397,7 +398,8 @@ function cizDetay() {
       (s.ozurlu ? '<span class="pill">' + s.ozurlu + ' gün özürlü</span>' : '') +
       (s.veli ? '<span class="pill">Veli: ' + esc(s.veli) + '</span>' : '') + '</div>' +
       (acts.length ? '<div class="acts">' + acts.join('') + '</div>' : '<div class="note">Kayıtlı telefon yok: davet yazısı ya da ev ziyareti gerekir.</div>') +
-      (s.adres ? '<p class="mini" style="margin-top:10px">📍 ' + esc(s.adres) + (s.adresDurum ? ' · ' + esc(s.adresDurum) : '') + '</p>' : '') +
+      (s.adres ? '<p class="mini" style="margin-top:10px">📍 ' + esc(s.adres) + (s.adresDurum ? ' · ' + esc(s.adresDurum) : '') + '</p>' : '<p class="mini" style="margin-top:10px">📍 Adres kayıtlı değil.</p>') +
+      '<button class="lnk" id="bDuzelt" type="button">✏️ Telefon / adres bilgisini düzelt</button>' +
       (s.gecikme ? '<div class="note r">⏰ ' + esc(s.gecikme) + '</div>' : '') +
       (adim ? '<div class="note">Sıradaki adım: ' + esc(adim) + '</div>' : '') +
     '</div>' +
@@ -410,6 +412,50 @@ function cizDetay() {
   $('app').innerHTML = h; ustBagla();
   $('bGeri').onclick = function () { D.secili = null; cizListe(); };
   $('bEkle').onclick = function () { cizForm(); window.scrollTo(0, 0); };
+  $('bDuzelt').onclick = function () { cizDuzelt(); window.scrollTo(0, 0); };
+}
+/* ===== Bilgi düzeltme (telefon, veli, adres) ===== */
+function cizDuzelt() {
+  D.ekran = 'duzelt';
+  var s = D.secili, B = s.bilgi || {};
+  var alan = function (id, et, deger, tip, ph) {
+    return '<div><label class="l" for="' + id + '">' + et + '</label>' + (tip === 'ta'
+      ? '<textarea class="inp" id="' + id + '" placeholder="' + ph + '">' + esc(deger) + '</textarea>'
+      : '<input class="inp" id="' + id + '" type="' + tip + '"' + (tip === 'tel' ? ' inputmode="tel" autocomplete="off"' : '') + ' value="' + esc(deger) + '" placeholder="' + ph + '">') + '</div>';
+  };
+  var h = ust(D.veri.okul || 'Devamsızlık', D.ogretmen) + '<main>' +
+    '<button class="back" id="bGeri">' + ICON.back.replace('<svg', '<svg width="20" height="20"') + esc(s.ad) + '</button>' +
+    '<form class="f" id="df" novalidate>' +
+      '<div class="card"><b>Bilgileri düzelt</b><div class="mini">' + esc(s.ad) + ' · ' + esc(s.sube) + ' · No ' + esc(s.no) + '<br>Eksik ya da yanlış olanı düzeltin. Değişen her bilgi, adınızla kayda geçer.</div></div>' +
+      alan('dVeli', 'Veli adı soyadı', B.veli, 'text', 'ör. Ayşe Yılmaz') +
+      alan('dVT', 'Veli telefonu', B.veliTel, 'tel', '05XX XXX XX XX') +
+      alan('dAT', 'Anne telefonu', B.anneTel, 'tel', '05XX XXX XX XX') +
+      alan('dBT', 'Baba telefonu', B.babaTel, 'tel', '05XX XXX XX XX') +
+      alan('dAdres', 'Adres', B.adres, 'ta', 'Mahalle, sokak, kapı no, ilçe') +
+      '<div class="err" id="dErr"></div>' +
+      '<button class="pri" id="dGonder" type="submit">' + ICON.send + 'Kaydet</button>' +
+      '<p class="mini" style="text-align:center">Düzelten: ' + esc(D.ogretmen) + '</p>' +
+    '</form></main>';
+  $('app').innerHTML = h; ustBagla();
+  $('bGeri').onclick = function () { cizDetay(); gecmisCiz(); };
+  $('df').onsubmit = function (ev) {
+    ev.preventDefault();
+    var err = $('dErr'); err.textContent = '';
+    var yeni = { veli: $('dVeli').value.trim(), veliTel: $('dVT').value.trim(), anneTel: $('dAT').value.trim(), babaTel: $('dBT').value.trim(), adres: $('dAdres').value.trim() };
+    var tel = /^\+?\d{10,13}$/;
+    var bozuk = [['veliTel', 'Veli telefonu'], ['anneTel', 'Anne telefonu'], ['babaTel', 'Baba telefonu']].filter(function (x) {
+      var d = yeni[x[0]].replace(/[\s()-]/g, ''); return d && !tel.test(d);
+    })[0];
+    if (bozuk) { err.textContent = bozuk[1] + ' geçersiz görünüyor (ör. 0532 123 45 67).'; return; }
+    var b = $('dGonder'); b.disabled = true; b.innerHTML = '<div class="spin" style="border-color:rgba(255,255,255,.4);border-top-color:#fff"></div>Kaydediliyor…';
+    api('duzelt', { kimlik: s.k, ogretmen: D.ogretmen, bilgi: yeni }).then(function (j) {
+      toast(j.mesaj || 'Kaydedildi.', 'ok');
+      D.ekran = 'detay';
+      return yukle(true);
+    }).then(function () {
+      gecmisCiz();
+    }).catch(function (e) { b.disabled = false; b.innerHTML = ICON.send + 'Tekrar dene'; err.textContent = e.message; });
+  };
 }
 function gecmisYukle() {
   var k = D.secili && D.secili.k; if (!k) return;
